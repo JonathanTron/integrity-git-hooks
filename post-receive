@@ -1,0 +1,65 @@
+#!/usr/bin/env ruby
+
+require "pp"
+require 'net/http'
+require 'net/https'
+require 'rubygems'
+begin
+  require 'json'
+  require 'daemons'
+  require 'grit'
+rescue LoadError => e
+  puts "Hook script dependency missing : \"#{e.to_s.split("--").last.strip}\" needs to be installed"
+  exit 0
+end
+
+# Get changes from stdin
+# git send us multiple lines when more than one branch are pushed
+changes = $stdin.read
+
+repo = Grit::Repo.new(ENV["GIT_DIR"] || "..")
+
+missing_configs = ["integrity.push", "integrity.repo"].collect do |config|
+  unless repo.config[config]
+    puts "Hook script need git config : '#{config}' to be set"
+    config
+  end
+end
+exit 0 if missing_configs.any?
+
+payloads = changes.split("\n").collect do |change|
+  # Extract info from line :
+  # old_rev                                  new_rev                                  ref
+  # c3e2474d879b17438b1060e7cb16c65487bad0e4 f74f3b87c69225539629e429799745041826feb2 refs/heads/master
+  old_rev, new_rev, ref = change.split
+  branch = ref.split("/").last
+  revisions = repo.commits_between(old_rev, new_rev).collect do |commit|
+    {
+      'id' => commit.sha,
+      'author' => {
+        'email' => commit.author.email,
+        'name' => commit.author.name
+      },
+      'message' => commit.message,
+      'timestamp' => commit.committed_date.xmlschema
+    }
+  end
+
+  {
+    "uri" => repo.config["integrity.repo"],
+    "branch" => branch,
+    "ref" => ref,
+    "commits" => revisions,
+  } unless revisions.empty?
+end
+
+branches = payloads.collect{|info| info["branch"]}
+puts "Push to Integrity CI for %s %s" % [branches.join(", "), branches.size > 1 ? "branches" : "branch"]
+
+Daemons.daemonize
+
+payloads.each do |payload|
+  uri = URI.parse(repo.config["integrity.push"])
+  req = Net::HTTP.new(uri.host, uri.port)
+  req.request_post uri.path, payload.to_json
+end

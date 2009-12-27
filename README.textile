@@ -1,0 +1,58 @@
+h1. integrity-git-hooks
+
+Git hooks to trigger Integrity build.
+
+h2. Features
+
+* Asynchronously post build requests, not slowing down your push.
+* Handle push with multiple branches and trigger multiple build requests.
+
+h2. Requirements
+
+* ruby 1.8.x or 1.9.x
+* rubygems
+
+And following gems
+
+* json
+* daemonize
+* grit
+
+h2. Setup
+
+Add following config to your git repository receiving the pushes :
+
+<pre>
+[integrity]
+  push = http://your.domain.tld/push/token
+  repo = git@your.domain.tld:repo.git
+</pre>
+
+or 
+
+<pre>
+cd repo.git
+git config --add integrity.push http://your.domain.tld/push/token
+git config --add integrity.repo git@your.domain.tld:repo.git
+</pre>
+
+* integrity.push needs to point to your Integrity push url, and token is what you've set-up in your init.rb
+  
+<pre>
+Integrity.configure do |c|
+  ...
+  c.push_token   "token"
+  ...
+end
+</pre>
+
+* integrity.repo needs to match what's configured in Integrity
+
+Finally, copy or symlink the @post-receive@ script in repo.git/hooks/post-receive and set the exec bits.
+
+<pre>
+cd /home/git
+git clone git://github.com/JonathanTron/integrity-git-hooks.git
+chmod +x integrity-git-hooks/post-receive
+ln -nsf /home/git/integrity-git-hooks/post-receive /home/git/repositories/repo.git/hooks/post-receive
+</pre>
